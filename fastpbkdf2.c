@@ -400,3 +400,122 @@ void fastpbkdf2_hmac_sha512(const uint8_t *pw, size_t npw,
   PBKDF2(sha512)(pw, npw, salt, nsalt, iterations, out, nout);
 }
 
+
+// HMAC-SHA512 only
+
+/* This macro expands to decls for the whole implementation for a given
+ * hash function.  Arguments are:
+ *
+ * _name like 'sha1', added to symbol names
+ * _blocksz block size, in bytes
+ * _hashsz digest output, in bytes
+ * _ctx hash context type
+ * _init hash context initialisation function
+ *    args: (_ctx *c)
+ * _update hash context update function
+ *    args: (_ctx *c, const void *data, size_t ndata)
+ * _final hash context finish function
+ *    args: (void *out, _ctx *c)
+ * _xform hash context raw block update function
+ *    args: (_ctx *c, const void *data)
+ * _xcpy hash context raw copy function (only need copy hash state)
+ *    args: (_ctx * restrict out, const _ctx *restrict in)
+ * _xtract hash context state extraction
+ *    args: args (_ctx *restrict c, uint8_t *restrict out)
+ * _xxor hash context xor function (only need xor hash state)
+ *    args: (_ctx *restrict out, const _ctx *restrict in)
+ *
+ * The resulting function is named PBKDF2(_name).
+ */
+#define DECL_HMACSHA(_name, _blocksz, _hashsz, _ctx,                          \
+                    _init, _update, _xform, _final, _xcpy, _xtract, _xxor)    \
+  typedef struct {                                                            \
+    _ctx inner;                                                               \
+    _ctx outer;                                                               \
+  } HMAC_CTX(_name);                                                          \
+                                                                              \
+  static inline void HMAC_INIT(_name)(HMAC_CTX(_name) *ctx,                   \
+                                      const uint8_t *key, size_t nkey)        \
+  {                                                                           \
+    /* Prepare key: */                                                        \
+    uint8_t k[_blocksz];                                                      \
+                                                                              \
+    /* Shorten long keys. */                                                  \
+    if (nkey > _blocksz)                                                      \
+    {                                                                         \
+      _init(&ctx->inner);                                                     \
+      _update(&ctx->inner, key, nkey);                                        \
+      _final(k, &ctx->inner);                                                 \
+                                                                              \
+      key = k;                                                                \
+      nkey = _hashsz;                                                         \
+    }                                                                         \
+                                                                              \
+    /* Standard doesn't cover case where blocksz < hashsz. */                 \
+    assert(nkey <= _blocksz);                                                 \
+                                                                              \
+    /* Right zero-pad short keys. */                                          \
+    if (k != key)                                                             \
+      memcpy(k, key, nkey);                                                   \
+    if (_blocksz > nkey)                                                      \
+      memset(k + nkey, 0, _blocksz - nkey);                                   \
+                                                                              \
+    /* Start inner hash computation */                                        \
+    uint8_t blk_inner[_blocksz];                                              \
+    uint8_t blk_outer[_blocksz];                                              \
+                                                                              \
+    for (size_t i = 0; i < _blocksz; i++)                                     \
+    {                                                                         \
+      blk_inner[i] = 0x36 ^ k[i];                                             \
+      blk_outer[i] = 0x5c ^ k[i];                                             \
+    }                                                                         \
+                                                                              \
+    _init(&ctx->inner);                                                       \
+    _update(&ctx->inner, blk_inner, sizeof blk_inner);                        \
+                                                                              \
+    /* And outer. */                                                          \
+    _init(&ctx->outer);                                                       \
+    _update(&ctx->outer, blk_outer, sizeof blk_outer);                        \
+  }                                                                           \
+                                                                              \
+  static inline void HMAC_UPDATE(_name)(HMAC_CTX(_name) *ctx,                 \
+                                        const void *data, size_t ndata)       \
+  {                                                                           \
+    _update(&ctx->inner, data, ndata);                                        \
+  }                                                                           \
+                                                                              \
+  static inline void HMAC_FINAL(_name)(HMAC_CTX(_name) *ctx,                  \
+                                       uint8_t out[_hashsz])                  \
+  {                                                                           \
+    _final(out, &ctx->inner);                                                 \
+    _update(&ctx->outer, out, _hashsz);                                       \
+    _final(out, &ctx->outer);                                                 \
+  }                                                                           \
+                                                                              \
+                                                                             \
+  static inline void HMACSHA(_name)(const uint8_t *pw, size_t npw,             \
+                     const uint8_t *salt, size_t nsalt,                       \
+                     uint8_t *out)                               \
+  {                                                                           \
+    HMAC_CTX(_name) ctx;                                                      \
+    HMAC_INIT(_name)(&ctx, pw, npw);                                          \
+    HMAC_UPDATE(_name)(&ctx, salt, nsalt);                                    \
+    HMAC_FINAL(_name)(&ctx, out);                                          \
+  }
+
+  
+ DECL_HMACSHA(sha512,
+            SHA512_CBLOCK,
+            SHA512_DIGEST_LENGTH,
+            SHA512_CTX,
+            SHA512_Init,
+            SHA512_Update,
+            SHA512_Transform,
+            SHA512_Final,
+            sha512_cpy,
+            sha512_extract,
+            sha512_xor)
+
+void hmac_sha512(const uint8_t *pw, size_t npw, const uint8_t *salt, size_t nsalt, uint8_t *out) {
+  HMACSHA(sha512)(pw, npw, salt, nsalt, out);
+}
