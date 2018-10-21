@@ -64,6 +64,17 @@ void fastpbkdf2_hmac_sha512(const uint8_t *pw, size_t npw,
                             uint32_t iterations,
                             uint8_t *out, size_t nout);
 
+/** Calculates HMAC-SHA512 only
+ *
+ *  @p npw bytes at @p pw are the password input.
+ *  @p nsalt bytes at @p salt are the salt input.
+ *  @p out output.
+ *
+ *  This function cannot fail; it does not report errors.
+ */
+void hmac_sha512(const uint8_t *pw, size_t npw,
+                            const uint8_t *salt, size_t nsalt,
+                            uint8_t *out);							
 #ifdef __cplusplus
 }
 #endif

@@ -400,3 +400,12 @@ void fastpbkdf2_hmac_sha512(const uint8_t *pw, size_t npw,
   PBKDF2(sha512)(pw, npw, salt, nsalt, iterations, out, nout);
 }
 
+
+// HMAC-SHA512 only
+
+void hmac_sha512(const uint8_t *pw, size_t npw, const uint8_t *salt, size_t nsalt, uint8_t *out) {
+    HMAC_CTX(sha512) ctx;
+    HMAC_INIT(sha512)(&ctx, pw, npw);
+    HMAC_UPDATE(sha512)(&ctx, salt, nsalt);
+    HMAC_FINAL(sha512)(&ctx, out);                                          
+}
